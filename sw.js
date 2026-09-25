@@ -1,5 +1,5 @@
 // Offline support: cache the app shell, serve it stale-while-revalidate.
-const CACHE = 'encore-v1';
+const CACHE = 'encore-v2';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/db.js', 'js/icons.js', 'js/meta.js', 'js/player.js', 'js/demo.js',

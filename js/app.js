@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import { icon, hydrateIcons } from './icons.js';
-import { readTags, probeDuration, dominantColor, hashColor } from './meta.js';
+import { readTags, probeDuration, dominantColor, hashColor, extractPalette, seedPalette } from './meta.js';
 import { Player } from './player.js';
 
 // ---------------------------------------------------------------- helpers
@@ -169,7 +169,8 @@ async function addTrack(m, albumArt) {
     await db.put('art', m.picture, t.artKey);
     artCache.delete(t.artKey);
     t.color = await dominantColor(m.picture);
-    if (t.album) albumArt.set(t.albumKey, { artKey: t.artKey, color: t.color });
+    t.palette = await extractPalette(m.picture);
+    if (t.album) albumArt.set(t.albumKey, { artKey: t.artKey, color: t.color, palette: t.palette });
   }
   t.color ||= hashColor(t.album || t.title);
   await db.put('audio', m.blob, id);
@@ -180,7 +181,7 @@ async function addTrack(m, albumArt) {
 
 function albumArtMap() {
   const m = new Map();
-  for (const t of S.tracks.values()) if (t.album && t.artKey && !m.has(t.albumKey)) m.set(t.albumKey, { artKey: t.artKey, color: t.color });
+  for (const t of S.tracks.values()) if (t.album && t.artKey && !m.has(t.albumKey)) m.set(t.albumKey, { artKey: t.artKey, color: t.color, palette: t.palette });
   return m;
 }
 
@@ -743,6 +744,7 @@ function updateTrack() {
   const c = t?.color || '60,60,60';
   $('#np').style.setProperty('--c', c);
   $('#player').style.setProperty('--c', c);
+  renderNPBackground(t);
   const ctx = player.context;
   $('#npFromType').textContent = ctx ? `Playing from ${ctx.type === 'songs' ? 'your library' : ctx.type === 'liked' ? 'playlist' : ctx.type}` : 'Now playing';
   $('#npFromName').textContent = ctx?.name || (t ? t.album : '');
@@ -781,6 +783,45 @@ function updatePlayState() {
 function updateModes() {
   $$('[data-action="shuffle"]').forEach((b) => b.classList.toggle('on', player.shuffle));
   $$('[data-action="repeat"]').forEach((b) => { b.classList.toggle('on', player.repeat !== 'off'); b.innerHTML = icon(player.repeat === 'one' ? 'repeat-one' : 'repeat'); });
+}
+
+// Songs imported before palettes existed get one computed the first time they play.
+const paletteJobs = new Map();
+function ensurePalette(t) {
+  if (t.palette) return Promise.resolve(t.palette);
+  const key = t.artKey || 'seed:' + t.id;
+  if (!paletteJobs.has(key)) {
+    paletteJobs.set(key, (async () => {
+      const blob = t.artKey ? await db.get('art', t.artKey) : null;
+      const pal = (blob && await extractPalette(blob)) || seedPalette(t.album || t.title);
+      const same = t.artKey ? [...S.tracks.values()].filter((x) => x.artKey === t.artKey) : [t];
+      for (const x of same) { x.palette = pal; db.put('tracks', x); }
+      return pal;
+    })());
+  }
+  return paletteJobs.get(key);
+}
+
+// Now Playing backdrop: blurred cover + drifting blobs in the cover's colors, crossfaded per song.
+let bgToken = 0;
+async function renderNPBackground(t) {
+  const token = ++bgToken;
+  const bg = $('#npBg');
+  if (!t) { bg.querySelectorAll('.np-bg-layer').forEach((l) => l.classList.remove('in')); return; }
+  const pal = await ensurePalette(t);
+  const url = t.artKey ? await artUrl(t.artKey) : null;
+  if (token !== bgToken) return;
+  const [c1, c2 = c1, c3 = c2, c4 = c1] = pal.colors;
+  const layer = document.createElement('div');
+  layer.className = 'np-bg-layer';
+  layer.style.cssText = `--p1:${c1};--p2:${c2};--p3:${c3};--p4:${c4}`;
+  layer.innerHTML = `${url ? `<img class="np-bg-art" src="${url}" alt="">` : ''}<i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i>`;
+  const old = [...bg.querySelectorAll('.np-bg-layer')];
+  bg.querySelector('.np-bg-shade').before(layer);
+  np.classList.toggle('light-art', !!pal.light);
+  $('#player').style.setProperty('--c', c1);
+  requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add('in')));
+  setTimeout(() => old.forEach((l) => l.remove()), 1000);
 }
 
 let seeking = false;

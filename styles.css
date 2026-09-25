@@ -399,11 +399,39 @@ body.is-playing .eq i:nth-child(3) { animation-duration: 1.05s; animation-delay:
 .np { position: fixed; inset: 0; z-index: 50; visibility: hidden; pointer-events: none; transition: visibility 0s .4s; }
 .np.open { visibility: visible; pointer-events: auto; transition-delay: 0s; }
 .np-bg {
-  position: absolute; inset: 0; opacity: 0; transition: opacity .35s, background-color .6s;
-  background-color: #0a0a0a;
-  background-image: linear-gradient(180deg, color-mix(in srgb, rgb(var(--c)) 85%, #000) 0%, color-mix(in srgb, rgb(var(--c)) 40%, #000) 50%, #080808 100%);
+  position: absolute; inset: 0; opacity: 0; transition: opacity .35s; overflow: hidden;
+  background: linear-gradient(180deg, color-mix(in srgb, rgb(var(--c)) 70%, #000), #080808);
 }
 .np.open .np-bg { opacity: 1; }
+/* One layer per song, crossfaded. Colors come from the cover (--p1..--p4). */
+.np-bg-layer { position: absolute; inset: 0; opacity: 0; transition: opacity 1s ease; background: rgb(var(--p1)); }
+.np-bg-layer.in { opacity: 1; }
+.np-bg-art {
+  position: absolute; left: -20%; top: -20%; width: 140%; height: 140%; object-fit: cover;
+  filter: blur(80px) saturate(1.6); opacity: .6; animation: bg-pan 46s ease-in-out infinite alternate;
+}
+.blob { position: absolute; width: 75vmax; height: 75vmax; border-radius: 50%; will-change: transform; }
+.b1 { background: radial-gradient(closest-side, rgb(var(--p1)), transparent); top: -30vmax; left: -25vmax; opacity: .85; animation: float-1 21s ease-in-out infinite alternate; }
+.b2 { background: radial-gradient(closest-side, rgb(var(--p2)), transparent); top: -15vmax; right: -35vmax; opacity: .8; animation: float-2 27s ease-in-out infinite alternate; }
+.b3 { background: radial-gradient(closest-side, rgb(var(--p3)), transparent); bottom: -35vmax; left: -15vmax; opacity: .75; animation: float-3 33s ease-in-out infinite alternate; }
+.b4 { background: radial-gradient(closest-side, rgb(var(--p4)), transparent); bottom: -25vmax; right: -30vmax; opacity: .55; animation: float-4 25s ease-in-out infinite alternate; }
+@keyframes bg-pan { to { transform: translate3d(6%, 4%, 0) scale(1.12) rotate(6deg); } }
+@keyframes float-1 { to { transform: translate3d(22vmax, 16vmax, 0) scale(1.2); } }
+@keyframes float-2 { to { transform: translate3d(-24vmax, 20vmax, 0) scale(.9); } }
+@keyframes float-3 { to { transform: translate3d(20vmax, -18vmax, 0) scale(1.15); } }
+@keyframes float-4 { to { transform: translate3d(-18vmax, -22vmax, 0) scale(1.25); } }
+body:not(.is-playing) .np-bg-layer > * { animation-play-state: paused; }
+/* Keeps white text readable on any cover. */
+.np-bg-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 30%, rgba(0,0,0,.45) 62%, rgba(0,0,0,.82) 100%); }
+.np.light-art .np-bg-shade { background: linear-gradient(180deg, rgba(0,0,0,.4) 0%, rgba(0,0,0,.3) 30%, rgba(0,0,0,.6) 62%, rgba(0,0,0,.88) 100%); }
+.np-bg-grain {
+  position: absolute; inset: 0; opacity: .08; mix-blend-mode: overlay; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@media (min-width: 900px) {
+  .np-bg-shade { background: radial-gradient(ellipse 70% 90% at 32% 50%, rgba(0,0,0,.05), rgba(0,0,0,.55)), linear-gradient(90deg, rgba(0,0,0,.1), rgba(0,0,0,.35)); }
+  .np.light-art .np-bg-shade { background: radial-gradient(ellipse 70% 90% at 32% 50%, rgba(0,0,0,.25), rgba(0,0,0,.7)), linear-gradient(90deg, rgba(0,0,0,.2), rgba(0,0,0,.5)); }
+}
 .np-inner {
   position: relative; height: 100%; display: flex; flex-direction: column;
   padding: calc(var(--safe-t) + 10px) 24px calc(var(--safe-b) + 18px);

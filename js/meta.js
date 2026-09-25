@@ -251,3 +251,84 @@ export function hashColor(str) {
   };
   return `${f(0)},${f(8)},${f(4)}`;
 }
+
+// ---------- palette (for the Now Playing background) ----------
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+function hslToRgb(h, s, l) {
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    return Math.round(255 * (l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+  };
+  return [f(0), f(8), f(4)];
+}
+// Pull a color into a range that looks rich behind white text.
+function tone([r, g, b]) {
+  const [h, s, l] = rgbToHsl(r, g, b);
+  return hslToRgb(h, s < 0.08 ? s : Math.min(1, s * 1.15 + 0.05), Math.min(0.52, Math.max(0.22, l))).join(',');
+}
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+// Returns { colors: ['r,g,b', ...3-4], light: bool } describing a cover's standout colors.
+export async function extractPalette(blob) {
+  try {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const S = 48;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, S, S);
+    URL.revokeObjectURL(url);
+    const d = ctx.getImageData(0, 0, S, S).data;
+    const bins = new Map();
+    let lum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      lum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      const bin = bins.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+      bin.n++; bin.r += r; bin.g += g; bin.b += b;
+      bins.set(key, bin);
+    }
+    const cands = [...bins.values()].map((bin) => {
+      const rgb = [bin.r / bin.n, bin.g / bin.n, bin.b / bin.n];
+      const max = Math.max(...rgb), min = Math.min(...rgb);
+      const sat = max ? (max - min) / max : 0;
+      const v = max / 255;
+      return { rgb, score: bin.n * (0.3 + sat * 1.6) * (v < 0.1 ? 0.15 : v > 0.95 && sat < 0.1 ? 0.4 : 1) };
+    }).sort((a, b) => b.score - a.score);
+    const picked = [];
+    for (const cand of cands) {
+      if (picked.every((p) => dist(p, cand.rgb) > 70)) picked.push(cand.rgb);
+      if (picked.length === 4) break;
+    }
+    if (!picked.length) return null;
+    // Single-color covers: derive neighbors by rotating the hue.
+    while (picked.length < 3) {
+      const [h, s, l] = rgbToHsl(...picked[0]);
+      picked.push(hslToRgb((h + (picked.length === 1 ? 35 : -40) + 360) % 360, Math.max(s, 0.35), l));
+    }
+    return { colors: picked.map(tone), light: lum / (S * S) > 165 };
+  } catch {
+    return null;
+  }
+}
+
+// Palette for songs without a cover, derived from a name.
+export function seedPalette(str) {
+  let h = 0;
+  for (const ch of str) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  const hue = h % 360;
+  return { colors: [0, 40, -45, 180].map((o) => hslToRgb((hue + o + 360) % 360, 0.55, 0.38).join(',')), light: false };
+}
